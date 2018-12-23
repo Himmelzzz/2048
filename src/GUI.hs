@@ -1,7 +1,7 @@
 module GUI where
 
 import Funktionen
- (Game(..), Direction(..), Grid, printCell, initGame, insertRandomGrid, blockCheck, leftGrid, fullCheck, scoreGrid, countNothing, createRandom, createRandomCell)
+ (Game(..), Direction(..), Grid, printCell, initGame, insertRandomGrid, blockCheck, leftGrid, fullCheck, scoreGrid, countNothing, createRandom, createRandomCell, move, bestmove)
 import Data.Maybe
 import Data.List
 import Prelude
@@ -67,10 +67,18 @@ theMap = attrMap V.defAttr
   (whiteBg, U.bg V.white)
   ]
 
-app :: App Game Tick Name
-app = App { appDraw = drawUI
+app1 :: App Game Tick Name
+app1 = App { appDraw = drawUI
           , appChooseCursor = neverShowCursor
           , appHandleEvent = handleEvent
+          , appStartEvent = return
+          , appAttrMap = const theMap
+          }
+
+app2 :: App Game Tick Name
+app2 = App { appDraw = drawUI
+          , appChooseCursor = neverShowCursor
+          , appHandleEvent = besthandleEvent
           , appStartEvent = return
           , appAttrMap = const theMap
           }
@@ -82,7 +90,16 @@ humanPlayer = do
     writeBChan chan Tick
     threadDelay 100000 -- decides how fast your game moves
   g <- initGame
-  void $ customMain (V.mkVty V.defaultConfig) (Just chan) app g
+  void $ customMain (V.mkVty V.defaultConfig) (Just chan) app1 g
+
+aIPlayer :: IO ()
+aIPlayer = do
+  chan <- newBChan 10
+  forkIO $ forever $ do
+    writeBChan chan Tick
+    threadDelay 500000 -- decides how fast your game moves
+  g <- initGame
+  void $ customMain (V.mkVty V.defaultConfig) (Just chan) app2 g
 
 isGameOver :: Game -> Bool
 isGameOver g = (fullCheck (_grid g)) && (blockCheck (_grid g))
@@ -91,28 +108,6 @@ step :: Game -> Game
 step g =
   if isGameOver g then Game {_grid = _grid g, _score = _score g, _done = True}
     else g
-
-handle :: Direction -> Grid -> Grid
-handle d grid = case d of
-  Funktionen.Up     -> transpose (leftGrid (transpose grid))
-  Funktionen.Down   -> transpose (map reverse (leftGrid (map reverse (transpose grid))))
-  Funktionen.Left   -> leftGrid grid
-  Funktionen.Right  -> map reverse (leftGrid (map reverse grid))
-
-move :: Direction -> Game -> Game
-move dir g =
-  if (_grid g == handle dir (_grid g))
-  then
-  Game {  _grid = _grid g
-        , _score = _score g
-        , _done = _done g
-        }
-  else
-  Game {  _grid = newGrid
-        , _score = (scoreGrid newGrid)
-        , _done = (fullCheck newGrid && blockCheck newGrid)
-        }
-  where newGrid =  insertRandomGrid (handle dir (_grid g)) (createRandom (countNothing (handle dir (_grid g)))) (createRandomCell (countNothing (handle dir (_grid g))))
 
 handleEvent :: Game -> BrickEvent Name Tick -> EventM Name (Next Game)
 handleEvent g (AppEvent Tick)                       = continue $ step g
@@ -124,6 +119,12 @@ handleEvent g (VtyEvent (V.EvKey (V.KChar 'r') [])) = liftIO (initGame) >>= cont
 handleEvent g (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt g
 handleEvent g (VtyEvent (V.EvKey V.KEsc []))        = halt g
 handleEvent g _                                     = continue g
+
+besthandleEvent :: Game -> BrickEvent Name Tick -> EventM Name (Next Game)
+besthandleEvent g (AppEvent Tick)                   = continue $ bestmove g
+besthandleEvent g (VtyEvent (V.EvKey (V.KChar 'r') [])) = liftIO (initGame) >>= continue
+besthandleEvent g (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt g
+besthandleEvent g _                                 = continue g
 
 drawUI :: Game -> [Widget Name]
 drawUI g =

@@ -117,4 +117,106 @@ initGame = do
           ,_done = False
           }
 
+handle :: Direction -> Grid -> Grid
+handle d grid = case d of
+  Funktionen.Up     -> transpose (leftGrid (transpose grid))
+  Funktionen.Down   -> transpose (map reverse (leftGrid (map reverse (transpose grid))))
+  Funktionen.Left   -> leftGrid grid
+  Funktionen.Right  -> map reverse (leftGrid (map reverse grid))
+
+move :: Direction -> Game -> Game
+move dir g =
+ if (_grid g == handle dir (_grid g))
+    then
+    Game {  _grid = _grid g
+          , _score = _score g
+          , _done = _done g
+         }
+    else
+    Game {  _grid = newGrid
+         , _score = (scoreGrid newGrid)
+         , _done = (fullCheck newGrid && blockCheck newGrid)
+         }
+    where newGrid =  insertRandomGrid (handle dir (_grid g)) (createRandom (countNothing (handle dir (_grid g)))) (createRandomCell (countNothing (handle dir (_grid g))))
+
+
 cell1=Just 2
+
+
+--for AI
+
+diffRow :: [Cell] -> Int
+diffRow [] = 0
+diffRow cells = case cells of
+  Just a : Just b :xs -> abs (b-a) + diffRow (Just b : xs)
+  Nothing : xs -> diffRow xs
+  x : Nothing : xs -> diffRow (x:xs)
+  [Just _] -> 0
+
+diffRows :: Grid -> Int
+diffRows grid = sum (map diffRow grid)
+
+diffColumns :: Grid -> Int
+diffColumns grid = sum (map diffRow $ transpose grid)
+
+diffGrid :: Grid -> Int
+diffGrid grid = diffRows grid + diffColumns grid
+
+
+compareRow :: [Cell] -> Int
+compareRow [] = 0
+compareRow cells = case cells of
+  Just a : Just b :xs -> if (a>b) then 1+compareRow (Just b : xs) else 0+compareRow (Just b : xs)
+  Nothing : xs -> compareRow xs
+  x : Nothing : xs -> compareRow (x:xs)
+  [Just _] -> 0
+
+compareRows :: Grid -> Int
+compareRows grid = sum (map compareRow grid)
+
+compareColumns :: Grid -> Int
+compareColumns grid = sum (map compareRow $ transpose grid)
+
+compareGrid :: Grid -> Int
+compareGrid grid = compareRows grid + compareColumns grid
+
+symbol :: Grid -> Double
+symbol grid = fromIntegral (countNothing grid + (compareGrid grid)*15) / fromIntegral (diffGrid grid)
+
+data Gd = Gd {
+              grid_ :: Grid,
+              direction_ :: Direction
+              }deriving (Eq, Show)
+
+maxfour :: Double->Double->Double->Double->Double
+maxfour a b c d = max d $ max c $ max a b
+
+issymbol :: Grid->Grid->Double
+issymbol grid1 grid2 = if (grid1 == grid2) then 0 else symbol grid1
+
+maxsymbol :: Grid -> Double
+maxsymbol grid = maxfour (issymbol (handle Funktionen.Up grid) grid) (issymbol (handle Funktionen.Down grid) grid) (issymbol (handle Funktionen.Left grid) grid) (issymbol (handle Funktionen.Right grid) grid)
+
+bestgrid :: Grid -> Grid
+bestgrid grid = if (maxsymbol grid == (symbol $ handle Funktionen.Up grid)) then
+  handle Funktionen.Up grid else if (maxsymbol grid == (symbol $ handle Funktionen.Down grid)) then
+    handle Funktionen.Down grid else if (maxsymbol grid == (symbol $ handle Funktionen.Left grid)) then
+      handle Funktionen.Left grid else handle Funktionen.Right grid
+
+bestmove :: Game -> Game
+bestmove g =
+     Game {  _grid = newGrid
+           , _score = (scoreGrid newGrid)
+           , _done = (fullCheck newGrid && blockCheck newGrid)
+           }
+      where newGrid =  insertRandomGrid (bestgrid (_grid g)) (createRandom (countNothing (bestgrid (_grid g)))) (createRandomCell (countNothing (bestgrid (_grid g))))
+
+--test
+grid :: Grid
+grid = [[Just 2, Just 4, Just 6, Nothing],
+        [Nothing, Just 8, Just 3, Just 6],
+        [Just 7, Nothing, Just 6, Nothing],
+        [Just 2, Just 3, Just 6, Nothing]]
+
+direction :: Direction
+direction = Up
